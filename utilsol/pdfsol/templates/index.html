@@ -1,0 +1,208 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search and Upload</title>
+    <!-- Bootstrap CSS -->
+    <link href="{% static 'pdfsol/bootstrap.min.css' %}" rel="stylesheet">
+</head>
+<body>
+
+<div class="container mt-4">
+    {%csrf_token%}
+    <div class="row">
+        <div class="col-md-6">
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="pdfFiles">Upload PDF Files:</label>
+                    <input type="file" class="form-control-file" id="pdfFiles" name="pdfFiles" accept=".pdf" multiple>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="UploadFiles()">Upload Files</button>
+            </form>
+            <div id="filestatus"></div>
+            <br>
+        </div>
+
+        <div class="col-md-6">
+            <div class="input-group mb-3">
+                <input type="text" class="form-control" placeholder="Enter search keyword" id="searchKeyword">
+                <div class="input-group-append">
+                    <button class="btn btn-primary" type="button" onclick="fetchSynonyms()">Fetch Synonyms</button>
+                </div>
+            </div>
+            <div id="fetchtatus" style="color: red;"></div>
+            <div class="form-group">
+                <label for="synonymsTextarea">Synonyms:</label>
+                <textarea class="form-control" id="synonymsTextarea" rows="3"></textarea><br>
+                <button type="button" class="btn btn-success" onclick="getFindingsImages()">Search Key(s)</button>
+                <button id="download-button" type="button" class="btn btn-primary d-none" onclick="getzip()">Download files</button>
+            </div>
+        </div>
+    </div>
+    <div class="row" hidden>
+        <label id="filename"></label>
+    </div>
+</div>
+
+<!-- Bootstrap JS and dependencies -->
+<script src="{% static 'pdfsol/jquery-3.5.1.min.js' %}"></script>
+<script src="{% static 'pdfsol/popper.min.js' %}"></script>
+<script src="{% static 'pdfsol/bootstrap.min.js' %}"></script>
+
+<!-- Your custom script -->
+<script>
+    const synonymsval = document.getElementById('synonymsTextarea');
+    synonymsval.disabled = true;
+
+    function fetchSynonyms() {
+        
+        const fetchtatus = document.getElementById('fetchtatus');
+        fetchtatus.innerText = '';
+        const searchKeywordval = document.getElementById('searchKeyword').value;
+        if (searchKeywordval === ''){
+            alert('Not possible for identify the synonyms, please provide search keyword.');
+            fetchtatus.innerText = 'Not possible for identify the synonyms, please provide search keyword.'
+            return;
+        }
+        
+        const csrftoken = getCookie('csrftoken');
+
+        fetch('findsynonyms/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken,
+            },
+            body: JSON.stringify({ keywrd:searchKeywordval }),
+        }).then(response => response.json())
+        .then(data =>{
+            console.log(data.synonyms.length);
+            if (data.synonyms.length>0){
+                document.getElementById('synonymsTextarea').value = data.synonyms.join(', ');
+            }else {
+                document.getElementById('synonymsTextarea').value = searchKeywordval;
+            }
+            
+            document.getElementById('synonymsTextarea').disabled = false;
+            fetchtatus.innerText = 'You can add/remove the synonym(s), if need.';
+        }).catch(error => {
+            fetchtatus.innerText = 'Not possible for identify the synonyms, please provide search keyword.';
+        });
+    };
+
+    function UploadFiles() {
+        
+        const csrftoken = getCookie('csrftoken');
+        document.getElementById('filestatus').innerText = '';
+        const filepath = document.getElementById('pdfFiles');
+        const files = filepath.files;
+
+        // Create a FormData object and append the file to it
+        const formData = new FormData();
+        for (let i=0;i<files.length;i++){
+            formData.append('files', files[i]);
+        }
+
+        // Combine formData and additional JSON data
+        formData.append('keywrd', synonymsval);
+        
+        // Send a POST request to the Django backend
+        fetch('upload/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': csrftoken,
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log(data);
+            document.getElementById('filestatus').innerText = data.error || data.message;
+        })
+        .catch(error => {
+            console.error('Error uploading file:', error);
+            alert('An error occurred while uploading the file.');
+        });
+    };
+    
+    function getFindingsImages() {
+        const synonymsval = document.getElementById('synonymsTextarea').value;
+        if (synonymsval === ''){
+            alert('Not possible for output, please provide search keyword(s).');
+            return;
+        }
+                
+        const csrftoken = getCookie('csrftoken');
+
+        fetch('savefiles/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken,
+            },
+            body: JSON.stringify({ keywrd:synonymsval }),
+        }).then(response => response.blob())
+        .then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'imagefile.zip';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+            console.log('done');
+        }).catch(error => {
+            console.error('Error fetch output files:', error);
+        });
+    };
+
+    function getzip(){
+        var fname = $("#download-button").val();
+        console.log(fname);
+        const csrftoken = getCookie('csrftoken');
+        fetch('downloadfile/',{
+            method:'POST',
+            headers:{
+                'Content-Type':'application/json',
+                'X-CSRFToken':csrftoken,
+            },
+            body:JSON.stringify({filename:fname}),
+        }).then(response => response.blob())
+        .then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'imagefile.zip';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+            console.log('done');
+        }).catch(error => {
+            alert('Unable to download the file(s).')
+        });
+    };
+
+    // Function to get the CSRF token from the cookie
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                // Check if the cookie name matches the expected format
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    };
+</script>
+
+</body>
+</html>
